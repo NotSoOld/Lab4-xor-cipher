@@ -1,9 +1,7 @@
 #include "lab4.h"
 
-
 pid_t catkeyPid;
 pid_t catfilePid;
-
 
 void AtExit(int exitCode)
 {
@@ -13,7 +11,6 @@ void AtExit(int exitCode)
 	wait(NULL);
 	exit(exitCode);
 }
-
 
 int main(void)
 {
@@ -101,9 +98,8 @@ int main(void)
 				printf(" Results will be incorrect. Stopping.\n");
 				AtExit(8);
 			}
-			for (i = 0; i < filereaded; i++) {
+			for (i = 0; i < filereaded; i++)
 				buf[i] = buf[i] ^ xor[i];
-			}
 			i = write(xorfile, buf, filereaded);
 			if (i != filereaded) {
 				perror("Error while writing into decrypted file");

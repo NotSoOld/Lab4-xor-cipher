@@ -1,8 +1,6 @@
 #include "lab4.h"
 
-
 pid_t genPid;
-
 
 void AtExit(int exitCode)
 {
@@ -11,7 +9,6 @@ void AtExit(int exitCode)
 	wait(NULL);
 	exit(exitCode);
 }
-
 
 int main(void)
 {
@@ -99,9 +96,8 @@ int main(void)
 				printf(" Results will be incorrect. Stopping.\n");
 				AtExit(8);
 			}
-			for (i = 0; i < readed; i++) {
+			for (i = 0; i < readed; i++)
 				buf[i] = buf[i] ^ xor[i];
-			}
 			i = write(xorfile, buf, readed);
 			if (i != readed) {
 				perror("Error while writing into xor-file");
