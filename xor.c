@@ -19,16 +19,18 @@ int main(void)
 	char path[BUFSIZE];
 	char buf[BUFSIZE];
 	
+	// Read path and name of the file to cipher.
 	memset(path, '\0', BUFSIZE);
 	out = "What file you want to XOR?\n: ";
 	write(1, out, strlen(out));
 	read(0, path, BUFSIZE);
-	path[strlen(path)-1] = '\0';		// Get rid of '\n' at the end
-
+	path[strlen(path)-1] = '\0';		// Get rid of '\n' at the end.
+	// Create a pipe to connect generator and cipher.
 	if (pipe(gen_descs) == -1) {
 		perror("Error creating generator pipe");
 		AtExit(1);
 	}
+	// Fork and run the generator.
 	genPid = fork();
 	switch (genPid) {
 	case -1:
@@ -36,16 +38,18 @@ int main(void)
 		AtExit(2);
 		break;
 	case 0:
+		// We're sending pipe descriptor to the generator.
 		memset(buf, '\0', BUFSIZE);
 		sprintf(buf, "%d", gen_descs[1]);
 		execlp("./gen_m", "./gen_m", buf, NULL);
 		break;
 	}
-	
+	// Create a pipe for cat process.
 	if (pipe(cat_descs) == -1) {
 		perror("Error creating catalog pipe");
 		AtExit(3);
 	}
+	// Fork and run cat-filewalker.
 	catPid = fork();
 	switch (catPid) {
 	case -1:
@@ -53,7 +57,9 @@ int main(void)
 		AtExit(4);
 		break;
 	case 0:
+		// Before we run cat, we need to redirect its output to our pipe.
 		close(cat_descs[0]);
+		// Duplicate our pipe input descriptor as stdout.
 		if (dup2(cat_descs[1], 1) == -1) {
 			perror("Error while redirecting cat input");
 			AtExit(5);
@@ -63,7 +69,7 @@ int main(void)
 		break;
 	default:
 		close(cat_descs[1]);
-		sleep(1);
+		sleep(1);		// Wait a bit for generator.
 		
 		char xor[BUFSIZE];
 		int readed;
@@ -72,6 +78,7 @@ int main(void)
 		int xorfile;
 		int xorkey;
 	
+		// Get ready to write ciphed file and key to decipher it later.
 		memset(buf, '\0', BUFSIZE);
 		memset(xor, '\0', BUFSIZE);
 		strcat(buf, path);
@@ -88,6 +95,7 @@ int main(void)
 			AtExit(7);
 		}
 		memset(buf, '\0', BUFSIZE);
+		// While cat haven't read the entire file...
 		while ((readed = read(cat_descs[0], buf, BUFSIZE)) > 0) {
 			genreaded = read(gen_descs[0], xor, readed);
 		//	printf("readed = %i, genreaded = %i\n", readed, genreaded);
@@ -96,6 +104,7 @@ int main(void)
 				printf(" Results will be incorrect. Stopping.\n");
 				AtExit(8);
 			}
+			// Apply XOR operation and save readed key.
 			for (i = 0; i < readed; i++)
 				buf[i] = buf[i] ^ xor[i];
 			i = write(xorfile, buf, readed);
@@ -117,7 +126,5 @@ int main(void)
 		close(xorkey);
 		
 		AtExit(0);
-		
-		break;
 	}
 }
