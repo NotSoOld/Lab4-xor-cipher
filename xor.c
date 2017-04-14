@@ -10,7 +10,7 @@ void AtExit(int exitCode)
 	exit(exitCode);
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
 	int gen_descs[2];
 	int cat_descs[2];
@@ -19,42 +19,61 @@ int main(void)
 	char path[BUFSIZE];
 	char buf[BUFSIZE];
 	
-	// Read path and name of the file to cipher.
-	memset(path, '\0', BUFSIZE);
-	out = "What file you want to XOR?\n: ";
-	write(1, out, strlen(out));
-	read(0, path, BUFSIZE);
-	path[strlen(path)-1] = '\0';		// Get rid of '\n' at the end.
+	if(argc != 3) {
+		printf("Usage: ./xor \"generator-program [path-to-key-file]\"");
+		printf(" \"program-to-read-file [path-to-file]\"\n");
+		printf("Not enough arguments. Stopping.\n");
+		AtExit(1);
+	}
 	// Create a pipe to connect generator and cipher.
 	if (pipe(gen_descs) == -1) {
 		perror("Error creating generator pipe");
-		AtExit(1);
+		AtExit(2);
 	}
+	// Take generator params.
+	char *genargs[3];
+	genargs[0] = strtok(argv[1], " ");
+	genargs[1] = strtok(NULL, " ");
+	genargs[2] = NULL;
+	// Take catalog params.
+	char *catargs[3];
+	catargs[0] = strtok(argv[2], " ");
+	catargs[1] = strtok(NULL, " ");	
+	catargs[2] = NULL;
 	// Fork and run the generator.
 	genPid = fork();
 	switch (genPid) {
 	case -1:
 		perror("Error forking the generator");
-		AtExit(2);
+		AtExit(3);
 		break;
 	case 0:
-		// We're sending pipe descriptor to the generator.
-		memset(buf, '\0', BUFSIZE);
-		sprintf(buf, "%d", gen_descs[1]);
-		execlp("./gen_m", "./gen_m", buf, NULL);
+		// Before we run generator, we need to redirect its output to our pipe.
+		close(gen_descs[0]);
+		// Duplicate our pipe input descriptor as stdout.
+		if (dup2(gen_descs[1], 1) == -1) {
+			perror("Error while redirecting generator input");
+			AtExit(4);
+		}
+		close(gen_descs[1]);
+		if (execvp(genargs[0], genargs) == -1) {
+			printf("Error while executing key generator!\n");
+			perror("Purpose");
+			AtExit(5);
+		}
 		break;
 	}
 	// Create a pipe for cat process.
 	if (pipe(cat_descs) == -1) {
 		perror("Error creating catalog pipe");
-		AtExit(3);
+		AtExit(6);
 	}
 	// Fork and run cat-filewalker.
 	catPid = fork();
 	switch (catPid) {
 	case -1:
 		perror("Error forking the filewalker");
-		AtExit(4);
+		AtExit(7);
 		break;
 	case 0:
 		// Before we run cat, we need to redirect its output to our pipe.
@@ -62,10 +81,14 @@ int main(void)
 		// Duplicate our pipe input descriptor as stdout.
 		if (dup2(cat_descs[1], 1) == -1) {
 			perror("Error while redirecting cat input");
-			AtExit(5);
+			AtExit(8);
 		}
 		close(cat_descs[1]);
-		execlp("cat", "cat", path, NULL);
+		if (execvp(catargs[0], catargs) == -1) {
+			printf("Error while executing file reader!\n");
+			perror("Purpose");
+			AtExit(9);
+		}
 		break;
 	default:
 		close(cat_descs[1]);
@@ -81,42 +104,43 @@ int main(void)
 		// Get ready to write ciphed file and key to decipher it later.
 		memset(buf, '\0', BUFSIZE);
 		memset(xor, '\0', BUFSIZE);
-		strcat(buf, path);
-		strcat(buf, ".crypted");
+		if (catargs[1] != NULL)
+			strcat(buf, catargs[1]);
+		else
+			strcat(buf, "out");
+		strcat(buf, ".xor");
 		xorfile = open(buf, O_RDWR|O_CREAT, 0600);
 		if (xorfile == -1) {
 			perror("Failed to create xor-file");
-			AtExit(6);
+			AtExit(10);
 		}
 		strcat(buf, ".key");
 		xorkey = open(buf, O_RDWR|O_CREAT, 0600);
 		if (xorkey == -1) {
 			perror("Failed to create key-file");
-			AtExit(7);
+			AtExit(11);
 		}
 		memset(buf, '\0', BUFSIZE);
-		// While cat haven't read the entire file...
-		while ((readed = read(cat_descs[0], buf, BUFSIZE)) > 0) {
-			genreaded = read(gen_descs[0], xor, readed);
-		//	printf("readed = %i, genreaded = %i\n", readed, genreaded);
-			if (genreaded != readed) {
-				printf("Seems like generator works too slow.");
-				printf(" Results will be incorrect. Stopping.\n");
-				AtExit(8);
-			}
+		// While we haven't read the entire file...
+		while (1) {
+			genreaded = read(gen_descs[0], xor, BUFSIZE);
+			readed = read(cat_descs[0], buf, genreaded);
 			// Apply XOR operation and save readed key.
 			for (i = 0; i < readed; i++)
 				buf[i] = buf[i] ^ xor[i];
 			i = write(xorfile, buf, readed);
 			if (i != readed) {
 				perror("Error while writing into xor-file");
-				AtExit(9);
+				AtExit(12);
 			}
 			i = write(xorkey, xor, readed);
 			if (i != readed) {
 				perror("Error while writing into key-file");
-				AtExit(10);
+				AtExit(13);
 			}
+			// Exit when we read the entire file.
+			if (genreaded != readed)
+				break;
 			memset(buf, '\0', BUFSIZE);
 			memset(xor, '\0', BUFSIZE);
 		}
